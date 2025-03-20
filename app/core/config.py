@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "E-commerce API"
     
     # SECURITY
-    SECRET_KEY: str = secrets.token_urlsafe(32)
+    SECRET_KEY: str  # This default should be removed
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
