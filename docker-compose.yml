@@ -20,8 +20,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres  # Default credentials
+      - POSTGRES_PASSWORD=postgres  # Default credentials
       - POSTGRES_DB=ecommerce
     ports:
       - "5432:5432"
