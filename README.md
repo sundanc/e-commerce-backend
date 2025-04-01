@@ -8,6 +8,8 @@
 
 A robust, scalable, and secure RESTful API for e-commerce applications. Built with FastAPI, SQLAlchemy, PostgreSQL, and Docker.
 
+## **[Buy Me A Coffee](https://buymeacoffee.com/sundanc)**
+
 ## ✨ Features
 
 - **🔐 Secure Authentication**: JWT-based authentication and authorization system
