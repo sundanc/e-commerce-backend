@@ -8,7 +8,7 @@
 
 A robust, scalable, and secure RESTful API for e-commerce applications. Built with FastAPI, SQLAlchemy, PostgreSQL, and Docker.
 
-## **[Buy Me A Coffee](https://buymeacoffee.com/sundanc)**
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=sundanc&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/sundanc)
 
 ## ✨ Features
 
