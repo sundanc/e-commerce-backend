@@ -207,4 +207,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<p align="center">Made with ❤️ by a solo developer for modern e-commerce solutions</p>
+<p align="center">Made with ❤️ by <a href="https://github.com/sundanc">Sundance</a> for modern e-commerce solutions</p>
