@@ -1,6 +1,7 @@
 from typing import Any, List
+import logging  # Add logging import
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 import stripe
 
@@ -20,6 +21,9 @@ if stripe_available:
         stripe.api_key = settings.STRIPE_API_KEY
     except Exception:
         stripe_available = False
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -56,17 +60,35 @@ def process_order_after_payment(db: Session, order_id: int):
     """Background task to update product stock after successful payment"""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order or order.status != OrderStatus.PAID:
+        # Log if order not found or status incorrect for processing
+        logger.warning(f"Order {order_id} not found or not in PAID status for stock update.")
         return
-    
+
     # Update product stock
+    # Potential Race Condition: If multiple orders for the same product are processed
+    # concurrently, this simple subtraction could lead to incorrect stock levels.
+    # Consider using database-level atomic updates (e.g., F expressions in Django ORM,
+    # or specific SQL UPDATE statements like `UPDATE products SET stock = stock - :quantity WHERE id = :product_id`)
+    # or pessimistic locking (`with_for_update()`) during the stock check/update phase
+    # for a more robust solution in high-concurrency scenarios.
     for item in order.items:
         if item.product_id:
             product = db.query(Product).filter(Product.id == item.product_id).first()
             if product:
-                product.stock -= item.quantity
-                db.add(product)
-    
-    db.commit()
+                if product.stock >= item.quantity:
+                    product.stock -= item.quantity
+                    db.add(product)
+                else:
+                    # Log inconsistency if stock is insufficient at this stage
+                    logger.error(f"Insufficient stock for product {item.product_id} during order {order_id} processing. Stock: {product.stock}, Required: {item.quantity}")
+            else:
+                 logger.warning(f"Product {item.product_id} not found during stock update for order {order_id}.")
+
+    try:
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error committing stock updates for order {order_id}: {e}")
+        db.rollback()
 
 @router.post("/", response_model=OrderSchema)
 def create_order(
@@ -126,25 +148,38 @@ def create_order(
                 amount=int(total_amount * 100),  # Stripe uses cents
                 currency="usd",
                 payment_method_types=["card"],
-                metadata={"user_id": current_user.id}
+                metadata={"user_id": current_user.id, "order_id": "pending"} # Add pending order ID placeholder
             )
             payment_id = payment_intent.id
         except Exception as e:
-            # Just log the error but continue (for local development)
-            print(f"Stripe error: {str(e)}")
-    
+            # Log the error securely, avoid logging sensitive parts of the exception if possible
+            logger.error(f"Stripe PaymentIntent creation failed for user {current_user.id}: {type(e).__name__}")
+            # Depending on policy, you might want to raise an HTTPException here
+            # raise HTTPException(status_code=500, detail="Payment processing failed.")
+            # For now, we allow order creation without payment_id if Stripe fails
+
     # Create the order
     order = Order(
         user_id=current_user.id,
         total_amount=total_amount,
-        shipping_address=order_in.shipping_address,
+        shipping_address=order_in.shipping_address, # Consider adding validation for address format/content
         status=OrderStatus.PENDING,
         payment_id=payment_id
     )
     db.add(order)
     db.commit()
     db.refresh(order)
-    
+
+    # Update Stripe metadata with the actual order ID if payment_id exists
+    if payment_id and stripe_available:
+        try:
+            stripe.PaymentIntent.modify(
+                payment_id,
+                metadata={"user_id": current_user.id, "order_id": order.id}
+            )
+        except Exception as e:
+            logger.error(f"Stripe PaymentIntent metadata update failed for order {order.id}: {type(e).__name__}")
+
     # Create order items
     for item_data in order_items:
         order_item = OrderItem(
@@ -153,19 +188,118 @@ def create_order(
         )
         db.add(order_item)
     
-    # For development mode without Stripe, just mark the order as PAID
-    if not stripe_available:
+    # For development mode without Stripe, or if Stripe failed, mark as PAID and process
+    # NOTE: In production with Stripe enabled, payment confirmation (e.g., via webhook)
+    # should trigger the status change to PAID and the stock update.
+    # This immediate change is primarily for local dev or non-Stripe setups.
+    if not stripe_available or not payment_id:
         order.status = OrderStatus.PAID
-    
+        # Update product stock in background only if marked as PAID immediately
+        background_tasks.add_task(process_order_after_payment, db, order.id)
+
     db.commit()
     db.refresh(order)
     
     # Clear the user's cart after order is placed
+    # Consider moving cart clearing until after successful payment confirmation in a production Stripe flow
     for cart_item in cart.items:
         db.delete(cart_item)
     db.commit()
     
-    # Update product stock in background
-    background_tasks.add_task(process_order_after_payment, db, order.id)
+    # If order was immediately marked PAID, the background task is already added.
+    # If using Stripe webhooks, the background task should be triggered there.
     
     return order
+
+# When implementing the webhook endpoint, consider these security improvements:
+@router.post("/webhook/stripe", include_in_schema=False)
+async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    # Add rate limiting for this endpoint to prevent DoS attacks
+    
+    # Set a reasonable size limit for the payload
+    payload = await request.body()
+    if len(payload) > 65536:  # Example: 64KB limit
+        logger.warning("Webhook payload too large")
+        raise HTTPException(status_code=400, detail="Payload too large")
+        
+    sig_header = request.headers.get('Stripe-Signature')
+    if not sig_header:
+        logger.warning("Missing Stripe signature header")
+        raise HTTPException(status_code=400, detail="Missing signature")
+        
+    event = None
+    if not settings.STRIPE_WEBHOOK_SECRET:
+        logger.error("Stripe webhook secret not configured.")
+        raise HTTPException(status_code=500, detail="Webhook not configured.")
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        # Invalid payload
+        logger.error(f"Invalid Stripe webhook payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        # Invalid signature
+        logger.error(f"Invalid Stripe webhook signature: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    # Add idempotency check to prevent duplicate processing
+    event_id = event['id']
+    # Check if this event was already processed (using Redis or DB)
+    # if event_already_processed(event_id):
+    #     return {"status": "already processed"}
+    
+    if event['type'] == 'payment_intent.succeeded':
+        payment_intent = event['data']['object']
+        order_id = payment_intent['metadata'].get('order_id')
+        if order_id:
+            order = db.query(Order).filter(Order.id == int(order_id)).first()
+            if order and order.status == OrderStatus.PENDING:
+                order.status = OrderStatus.PAID
+                order.payment_id = payment_intent.id # Ensure payment ID is stored
+                db.add(order)
+                db.commit()
+                # Trigger background task for stock update now that payment is confirmed
+                background_tasks.add_task(process_paid_order, order_id)
+                logger.info(f"Order {order_id} marked as PAID via Stripe webhook.")
+            else:
+                logger.warning(f"Order {order_id} not found or not PENDING for webhook {event['id']}.")
+        else:
+            logger.warning(f"Order ID missing in metadata for webhook {event['id']}.")
+    
+    # Handle other event types (e.g., payment_intent.payment_failed)
+    elif event['type'] == 'payment_intent.payment_failed':
+        payment_intent = event['data']['object']
+        order_id = payment_intent['metadata'].get('order_id')
+        # Optionally update order status to failed or log the failure
+        logger.warning(f"Payment failed for order {order_id} via Stripe webhook {event['id']}.")
+    
+    else:
+        logger.info(f"Unhandled Stripe event type {event['type']}")
+    
+    return {"status": "success"}
+
+# Create a separate function for background processing that creates its own DB session
+def process_paid_order(order_id: int):
+    """Process a paid order in a background task with a fresh DB session"""
+    from app.core.database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Process the order with a new session
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if order and order.status == OrderStatus.PENDING:
+            order.status = OrderStatus.PAID
+            db.add(order)
+            db.commit()
+            
+            # Now process the stock updates
+            process_order_after_payment(db, order_id)
+            logger.info(f"Order {order_id} processed successfully in background task")
+    except Exception as e:
+        logger.error(f"Error processing paid order {order_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
