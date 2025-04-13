@@ -48,15 +48,17 @@ This document outlines the security measures implemented in the e-commerce backe
 
 ## Environment Variable Security
 
-- **Secret Key Management**: Application secrets are stored in environment variables.
-- **Environment Variable Separation**: Different environments (dev/prod) use different variables.
+- **Secret Key Management**: Application secrets (API keys, database URLs, JWT secret) should be stored securely, ideally outside the codebase.
+- **Environment Variable Separation**: Different environments (dev/prod) must use different variables and secrets.
 - **Example File**: Sensitive information is excluded from `.env.example` file.
+- **Docker Secrets**: For production Docker deployments, prefer using Docker Secrets over plain environment variables to manage sensitive configuration like database passwords and API keys.
 
 ## Database Security
 
 - **Parameterized Queries**: SQLAlchemy ORM protects against SQL injection.
 - **DB Access Limitation**: Database accessed through dependency injection with restricted scope.
 - **Soft Deletion**: Sensitive data is soft-deleted to maintain referential integrity.
+- **Race Condition Awareness**: Identified potential race conditions in stock updates during concurrent order processing. Recommended using atomic database operations or locking mechanisms for production robustness.
 
 ## Payment Integration Security
 
@@ -64,14 +66,22 @@ This document outlines the security measures implemented in the e-commerce backe
 - **Payment API Keys**: API keys are stored in environment variables, not in code.
 - **Local Development Safety**: Mock payment processing when API keys aren't available.
 - **Background Processing**: Sensitive payment operations processed in background tasks.
+- **Webhook Security**: Requires proper configuration of webhook secrets and signature verification to prevent unauthorized updates.
+
+## Container Security
+
+- **Dockerfile Best Practices**: The application container runs as a non-root user (`appuser`) to minimize potential damage if the application is compromised.
+- **Secure Base Image**: Uses an official Python slim image. Regularly update the base image.
+- **Dependency Scanning**: Regularly scan container images and application dependencies for known vulnerabilities using tools like `pip-audit`, `safety`, Trivy, or Snyk.
 
 ## Additional Best Practices
 
 - **Security Headers**: Properly configured authentication headers.
 - **Code Structure**: Secure code organization with proper separation of concerns.
-- **Dependency Management**: Package versions are pinned for stability and security.
+- **Dependency Management**: Package versions are pinned in `requirements.txt`. Regularly scan dependencies for vulnerabilities.
 - **Input Sanitization**: Implemented through Pydantic's validation system.
 - **Admin Interface Protection**: Admin functionality is protected by role checks, not just URL obscurity.
+- **Audit Logging**: Basic audit logging implemented for key security events. **Caution**: Ensure logs do not inadvertently contain sensitive information like passwords, full tokens, or excessive PII. Sensitive data should be masked or omitted from logs.
 
 ## Recommendations for Production
 
@@ -79,7 +89,12 @@ This document outlines the security measures implemented in the e-commerce backe
 2. **Penetration Testing**: Conduct regular security testing.
 3. **Audit Logging**: Add comprehensive logging for security events.
 4. **HTTPS Only**: Force HTTPS connections in production.
-5. **CORS Restrictions**: Limit CORS to specific origins.
+5. **CORS Restrictions**: Limit CORS to specific, trusted origins.
 6. **Security Monitoring**: Implement monitoring for suspicious activities.
-7. **Regular Updates**: Keep dependencies updated for security patches.
-8. **Two-Factor Authentication**: Add 2FA for sensitive operations.
+7. **Regular Updates**: Keep dependencies and base container images updated for security patches. Implement automated dependency scanning.
+8. **Two-Factor Authentication**: Add 2FA for sensitive operations (especially admin login).
+9. **Webhook Secret Management**: Securely manage and rotate Stripe webhook secrets.
+10. **Atomic Operations**: Implement atomic updates or locking for critical concurrent operations like stock management.
+11. **Run as Non-Root**: Ensure containerized applications run as non-root users.
+12. **Use Docker Secrets**: Manage sensitive configuration in Docker using secrets instead of environment variables.
+13. **Review Logging**: Carefully review all log outputs to ensure no sensitive data is being exposed. Implement log masking where necessary.

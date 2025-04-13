@@ -12,16 +12,17 @@ A robust, scalable, and secure RESTful API for e-commerce applications. Built wi
 
 ## ✨ Features
 
-- **🔐 Secure Authentication**: JWT-based authentication and authorization system
-- **👥 User Management**: Account creation, profiles, and role-based permissions
+- **🔐 Secure Authentication**: JWT-based authentication with token protection and role-based authorization
+- **👥 User Management**: Account creation, profiles, and permission controls
 - **📦 Product Catalog**: Comprehensive product management with searching and filtering
 - **🛒 Shopping Cart**: Flexible cart functionality with real-time stock validation
 - **💳 Order Processing**: End-to-end order lifecycle management
-- **💰 Payment Integration**: Seamless Stripe payment processing
+- **💰 Payment Integration**: Seamless Stripe payment processing with webhook security
 - **🚚 Shipping Management**: Order tracking and status updates
-- **👑 Admin Dashboard API**: Complete administrative controls
-- **⚡ Performance Optimized**: Redis caching for high-performance operation
-- **🐳 Containerized**: Docker & Docker Compose for easy deployment
+- **👑 Admin Dashboard API**: Complete administrative controls with proper permission checks
+- **⚡ Performance Optimized**: Redis caching and query optimization for high throughput
+- **🐳 Containerized**: Docker & Docker Compose with security best practices
+- **🔒 Security Focused**: Comprehensive security controls with automated vulnerability scanning
 
 ## 🏗️ Architecture
 
@@ -44,15 +45,15 @@ My e-commerce backend follows a clean, layered architecture:
 ## 🔧 Technology Stack
 
 - **FastAPI**: High-performance API framework with automatic OpenAPI documentation
-- **SQLAlchemy**: Powerful ORM for database operations
+- **SQLAlchemy**: Powerful ORM for database operations with transaction safety
 - **PostgreSQL**: Robust relational database for production
 - **SQLite**: Lightweight database for development and testing
-- **Pydantic**: Data validation and settings management 
-- **JWT**: Secure, stateless authentication
-- **Stripe API**: Enterprise-grade payment processing
-- **Redis**: High-performance caching and session management
+- **Pydantic**: Data validation and settings management (compatible with v1 and v2) 
+- **JWT**: Secure, stateless authentication with replay protection
+- **Stripe API**: Enterprise-grade payment processing with webhook security
+- **Redis**: High-performance caching, session management, and rate limiting
 - **Alembic**: Database migration tool
-- **Docker & Docker Compose**: Containerization and orchestration
+- **Docker & Docker Compose**: Containerization with security best practices
 - **WebSockets**: Real-time order and notification updates
 
 ## 🚀 Getting Started
@@ -134,12 +135,15 @@ e-commerce-backend/
 │   ├── core/                 # Core functionality
 │   │   ├── config.py         # Configuration
 │   │   ├── security.py       # Security utilities
+│   │   ├── limiter.py        # Rate limiting
 │   │   └── database.py       # Database connection
 │   ├── models/               # SQLAlchemy models
 │   ├── schemas/              # Pydantic schemas
 │   ├── services/             # Business logic
 │   └── utils/                # Utility functions
 ├── alembic/                  # Database migrations
+├── scripts/                  # Helper scripts
+│   └── security_scan.py      # Security vulnerability scanner
 ├── tests/                    # Test suite
 ├── docker-compose.yml        # Docker Compose configuration
 ├── Dockerfile                # Docker configuration
@@ -149,54 +153,86 @@ e-commerce-backend/
 
 ### Testing Credentials
 
-For local development and testing, use these credentials:
-
-- **Admin User**:
-  - Email: admin@example.com
-  - Password: admin123
-
-- **Regular User**:
-  - Email: user@example.com
-  - Password: user123
+Default credentials for local development are created by the `setup_local.py` script. Please refer to the script for details. **Do not use these credentials in production.**
 
 ## 🔒 Security
 
-This project implements comprehensive security measures:
+This project implements comprehensive security measures to protect your e-commerce platform:
 
-- **Authentication**: JWT tokens with configurable expiration
-- **Password Storage**: Secure password hashing with bcrypt
-- **Role-based Access Control**: Fine-grained permission control
-- **Input Validation**: Thorough schema validation with Pydantic
-- **SQL Injection Protection**: Parameterized queries via SQLAlchemy
-- **API Security**: Proper CORS configuration and endpoint protection
+### Authentication & Authorization
+- **Enhanced JWT Authentication**: Secure tokens with JTI tracking, proper algorithm validation, and replay protection
+- **Role-Based Access Control**: Strict permission enforcement for user/admin operations
+- **Password Security**: Bcrypt hashing with high work factor (12+ rounds)
 
-For complete security details, see my [SECURITY.md](./SECURITY.md) documentation.
+### API Protection
+- **Rate Limiting**: Protects authentication endpoints and API routes from abuse and brute-force attacks
+- **Input Validation**: Thorough request validation with Pydantic schema enforcement
+- **Query Limiting**: Protection against resource exhaustion with pagination limits
+- **Security Headers**: Comprehensive set including CSP, HSTS, X-Content-Type-Options, and more
+- **HTTPS Enforcement**: Automatic HTTP to HTTPS redirection in production
+
+### Infrastructure Security
+- **Non-root Container**: Docker containers run as unprivileged user
+- **Docker Secrets**: Support for secure credential management in production
+- **Dependency Scanning**: Built-in tools to detect vulnerabilities
+- **Container Health Checks**: Monitoring and self-healing capabilities
+
+### Data Protection
+- **SQL Injection Prevention**: Parameterized queries and ORM protection
+- **XSS Protection**: Content-Security-Policy and proper output encoding
+- **CSRF Protection**: API design that mitigates cross-site request forgery
+- **Audit Logging**: Security event tracking with request IDs
+
+### Security Tools
+We provide built-in security tools to help identify and mitigate vulnerabilities:
+
+```bash
+# Run the basic security scanner
+python scripts/security_scan.py
+
+# Run with detailed output
+python scripts/security_scan.py --verbose
+
+# Export results to JSON
+python scripts/security_scan.py --json results.json
+
+# Run comprehensive security audit
+python security_audit.py
+```
+
+For complete implementation details, configuration options, and production recommendations, see our [SECURITY.md](./SECURITY.md) documentation.
 
 ## ⚡ Performance
 
 The API is designed for high performance and scalability:
 
 - **Async Endpoints**: Non-blocking request handling
-- **Connection Pooling**: Efficient database connections
+- **Connection Pooling**: Efficient database connections with proper transaction isolation
 - **Redis Caching**: Optimized data retrieval
-- **Pagination**: For large result sets
-- **Background Tasks**: For CPU-intensive operations
+- **Pagination**: For large result sets with DoS protection
+- **Background Tasks**: For CPU-intensive operations with proper session management
 
 ## 🌟 Production Readiness
 
 For production deployment, consider these additional steps:
 
-1. Set up a proper CI/CD pipeline
+1. Set up a proper CI/CD pipeline with security scanning
 2. Configure HTTPS with a valid certificate
-3. Set up database backups
-4. Implement rate limiting
-5. Configure proper monitoring and logging
-6. Restrict CORS to trusted domains
-7. Set up a reverse proxy (Nginx/Traefik)
+3. Set up database backups and recovery procedures
+4. Configure proper monitoring and logging with alerts
+5. Restrict CORS to trusted domains
+6. Set up a reverse proxy (Nginx/Traefik)
+7. Use Docker secrets for sensitive information
+8. Implement token revocation and refresh mechanisms
+9. Configure a Web Application Firewall (WAF)
 
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 🙏 Acknowledgments
 

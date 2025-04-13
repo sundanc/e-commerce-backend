@@ -1,5 +1,10 @@
 version: '3.8'
 
+# For production, consider using Docker Secrets to manage sensitive data
+# secrets:
+#   db_password:
+#     file: ./db_password.txt # Example secret file
+
 services:
   api:
     build: .
@@ -7,24 +12,60 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-    environment:
+    # In production, use Docker secrets instead of environment variables for sensitive data
+    # environment:
+    #   - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/ecommerce # Example using secret
+    #   - REDIS_URL=redis://redis:6379/0
+    #   - SECRET_KEY=${SECRET_KEY} # Pass from host environment or secrets
+    #   - STRIPE_API_KEY=${STRIPE_API_KEY}
+    #   - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    # secrets:
+    #   - db_password
+    environment: # Keep for development ease, but be aware of production risks
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ecommerce
       - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-dev-secret-key # Use a non-production key for dev
+      - STRIPE_API_KEY= # Leave blank or use test key for dev
+      - STRIPE_WEBHOOK_SECRET= # Leave blank or use test secret for dev
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60 # Example
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy # Wait for db healthcheck
+      redis:
+        condition: service_started # Redis doesn't have a built-in healthcheck command easily usable here
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    user: appuser
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   db:
     image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=postgres  # Default credentials
-      - POSTGRES_PASSWORD=postgres  # Default credentials
+    # In production, use Docker secrets for passwords
+    # environment:
+    #   - POSTGRES_USER=postgres
+    #   - POSTGRES_PASSWORD_FILE=/run/secrets/db_password # Example using secret
+    #   - POSTGRES_DB=ecommerce
+    # secrets:
+    #   - db_password
+    environment: # Keep for development ease
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=ecommerce
     ports:
       - "5432:5432"
+    command: postgres -c 'max_connections=100' -c 'shared_buffers=128MB'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:alpine
@@ -32,7 +73,18 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    # Add healthcheck for Redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
   redis_data:
+
+# Define secrets (only uncomment and configure for production)
+# secrets:
+#   db_password:
+#     file: ./db_password.txt # Path to the secret file on the host

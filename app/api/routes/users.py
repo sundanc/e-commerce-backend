@@ -47,6 +47,11 @@ def update_user(
             )
     
     user_data = user_in.dict(exclude_unset=True)
+
+    # Prevent users from updating sensitive fields themselves
+    user_data.pop("is_admin", None)
+    user_data.pop("is_active", None)
+
     if user_in.password:
         user_data["hashed_password"] = get_password_hash(user_in.password)
         del user_data["password"]

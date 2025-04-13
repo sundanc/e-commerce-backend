@@ -20,97 +20,112 @@ from app.models.user import User
 from app.models.product import Product
 from app.core.database import Base
 
-# Create engine for database
-if settings.DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(
-        settings.DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-else:
-    engine = create_engine(settings.DATABASE_URL)
+# Security warning
+print("WARNING: This script creates users with preset passwords for DEVELOPMENT USE ONLY.")
+print("         Never use these credentials in a production environment!")
+print("=" * 80)
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+# Check if running in a production environment
+if os.getenv("ENVIRONMENT", "").lower() == "production":
+    print("ERROR: This script should not be run in production environments!")
+    sys.exit(1)
 
-# Create session
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-db = SessionLocal()
+# Improve error handling for database operations
+try:
+    # Create engine for database (moved inside try block)
+    if settings.DATABASE_URL.startswith("sqlite"):
+        engine = create_engine(
+            settings.DATABASE_URL, connect_args={"check_same_thread": False}
+        )
+    else:
+        engine = create_engine(settings.DATABASE_URL)
 
-# Check if any users already exist
-existing_user = db.query(User).first()
+    # Create tables
+    Base.metadata.create_all(bind=engine)
 
-if not existing_user:
-    print("Creating test users...")
-    # Create admin user
-    admin_user = User(
-        email="admin@example.com",
-        username="admin",
-        hashed_password=get_password_hash("admin123"),
-        full_name="Admin User",
-        is_active=True,
-        is_admin=True,
-    )
-    db.add(admin_user)
+    # Create session
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
 
-    # Create regular user
-    regular_user = User(
-        email="user@example.com",
-        username="user",
-        hashed_password=get_password_hash("user123"),
-        full_name="Regular User",
-        is_active=True,
-        is_admin=False,
-    )
-    db.add(regular_user)
-    db.commit()
-    print("Test users created.")
+    # Check if any users already exist
+    existing_user = db.query(User).first()
 
-# Check if any products already exist
-existing_product = db.query(Product).first()
+    if not existing_user:
+        print("Creating test users...")
+        # Create admin user
+        admin_user = User(
+            email="admin@example.com",
+            username="admin",
+            hashed_password=get_password_hash("admin123"),
+            full_name="Admin User",
+            is_active=True,
+            is_admin=True,
+        )
+        db.add(admin_user)
 
-if not existing_product:
-    print("Creating test products...")
-    # Create some test products
-    products = [
-        Product(
-            name="Laptop",
-            description="Powerful laptop with high performance",
-            price=999.99,
-            image_url="https://example.com/laptop.jpg",
-            stock=10,
-            category="Electronics",
-            sku="TECH-001",
-        ),
-        Product(
-            name="Smartphone",
-            description="Latest smartphone with amazing camera",
-            price=499.99,
-            image_url="https://example.com/smartphone.jpg",
-            stock=20,
-            category="Electronics",
-            sku="TECH-002",
-        ),
-        Product(
-            name="Headphones",
-            description="Noise cancelling wireless headphones",
-            price=149.99,
-            image_url="https://example.com/headphones.jpg",
-            stock=30,
-            category="Audio",
-            sku="AUDIO-001",
-        ),
-        Product(
-            name="Coffee Maker",
-            description="Automatic coffee maker for your kitchen",
-            price=79.99,
-            image_url="https://example.com/coffeemaker.jpg",
-            stock=15,
-            category="Home",
-            sku="HOME-001",
-        ),
-    ]
-    for product in products:
-        db.add(product)
-    db.commit()
-    print("Test products created.")
+        # Create regular user
+        regular_user = User(
+            email="user@example.com",
+            username="user",
+            hashed_password=get_password_hash("user123"),
+            full_name="Regular User",
+            is_active=True,
+            is_admin=False,
+        )
+        db.add(regular_user)
+        db.commit()
+        print("Test users created.")
 
-print("Local setup completed successfully!")
+    # Check if any products already exist
+    existing_product = db.query(Product).first()
+
+    if not existing_product:
+        print("Creating test products...")
+        # Create some test products
+        products = [
+            Product(
+                name="Laptop",
+                description="Powerful laptop with high performance",
+                price=999.99,
+                image_url="https://example.com/laptop.jpg",
+                stock=10,
+                category="Electronics",
+                sku="TECH-001",
+            ),
+            Product(
+                name="Smartphone",
+                description="Latest smartphone with amazing camera",
+                price=499.99,
+                image_url="https://example.com/smartphone.jpg",
+                stock=20,
+                category="Electronics",
+                sku="TECH-002",
+            ),
+            Product(
+                name="Headphones",
+                description="Noise cancelling wireless headphones",
+                price=149.99,
+                image_url="https://example.com/headphones.jpg",
+                stock=30,
+                category="Audio",
+                sku="AUDIO-001",
+            ),
+            Product(
+                name="Coffee Maker",
+                description="Automatic coffee maker for your kitchen",
+                price=79.99,
+                image_url="https://example.com/coffeemaker.jpg",
+                stock=15,
+                category="Home",
+                sku="HOME-001",
+            ),
+        ]
+        for product in products:
+            db.add(product)
+        db.commit()
+        print("Test products created.")
+
+    print("Local setup completed successfully!")
+except Exception as e:
+    print(f"ERROR: Setup failed: {e}")
+    sys.exit(1)

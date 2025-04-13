@@ -1,9 +1,9 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_active_admin
+from app.api.deps import get_current_active_admin, get_db, limit_query_factory
 from app.core.database import get_db
 from app.models.product import Product
 from app.models.user import User
@@ -11,19 +11,22 @@ from app.schemas.product import Product as ProductSchema, ProductCreate, Product
 
 router = APIRouter()
 
+# Create a limiter for product queries
+limit_product_query = limit_query_factory(max_limit=100, default_limit=20)
+
 @router.get("/", response_model=List[ProductSchema])
 def get_products(
     db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100,
+    pagination: Tuple[int, int] = Depends(limit_product_query),
     category: Optional[str] = None,
-    min_price: Optional[float] = None,
-    max_price: Optional[float] = None,
-    search: Optional[str] = None,
+    min_price: Optional[float] = Query(None, ge=0),  # Ensure non-negative price
+    max_price: Optional[float] = Query(None, ge=0),  # Ensure non-negative price
+    search: Optional[str] = Query(None, max_length=100),  # Limit search length to prevent DoS
 ) -> Any:
     """
     Retrieve products with optional filtering
     """
+    skip, limit = pagination  # Unpack the pagination values
     query = db.query(Product).filter(Product.is_active == True)
     
     if category:
@@ -36,8 +39,10 @@ def get_products(
         query = query.filter(Product.price <= max_price)
     
     if search:
+        # Use more efficient ILIKE with index if available
         query = query.filter(Product.name.ilike(f"%{search}%"))
     
+    # Apply limits for security and performance
     products = query.offset(skip).limit(limit).all()
     return products
 
