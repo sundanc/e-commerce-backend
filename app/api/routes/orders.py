@@ -7,12 +7,13 @@ import stripe
 
 from app.api.deps import get_current_user
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.cart import Cart, CartItem
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import Product
 from app.schemas.order import Order as OrderSchema, OrderCreate
+from app.services.notifications import email_service
 
 # Configure Stripe - Only if API key is available
 stripe_available = bool(settings.STRIPE_API_KEY)
@@ -56,6 +57,7 @@ def get_order(
         raise HTTPException(status_code=404, detail="Order not found")
     return order
 
+# Fix the process_order_after_payment function to use parameterized SQL for atomic operations
 def process_order_after_payment(db: Session, order_id: int):
     """Background task to update product stock after successful payment"""
     order = db.query(Order).filter(Order.id == order_id).first()
@@ -64,34 +66,32 @@ def process_order_after_payment(db: Session, order_id: int):
         logger.warning(f"Order {order_id} not found or not in PAID status for stock update.")
         return
 
-    # Update product stock
-    # Potential Race Condition: If multiple orders for the same product are processed
-    # concurrently, this simple subtraction could lead to incorrect stock levels.
-    # Consider using database-level atomic updates (e.g., F expressions in Django ORM,
-    # or specific SQL UPDATE statements like `UPDATE products SET stock = stock - :quantity WHERE id = :product_id`)
-    # or pessimistic locking (`with_for_update()`) during the stock check/update phase
-    # for a more robust solution in high-concurrency scenarios.
-    for item in order.items:
-        if item.product_id:
-            product = db.query(Product).filter(Product.id == item.product_id).first()
-            if product:
-                if product.stock >= item.quantity:
-                    product.stock -= item.quantity
-                    db.add(product)
-                else:
-                    # Log inconsistency if stock is insufficient at this stage
-                    logger.error(f"Insufficient stock for product {item.product_id} during order {order_id} processing. Stock: {product.stock}, Required: {item.quantity}")
-            else:
-                 logger.warning(f"Product {item.product_id} not found during stock update for order {order_id}.")
-
     try:
+        # Use a transaction for atomic updates
+        for item in order.items:
+            if item.product_id:
+                # Use SQL update with atomic operation to prevent race conditions
+                result = db.execute(
+                    """
+                    UPDATE products 
+                    SET stock = stock - :quantity 
+                    WHERE id = :product_id AND stock >= :quantity
+                    """,
+                    {"quantity": item.quantity, "product_id": item.product_id}
+                )
+                
+                if result.rowcount == 0:  # No row was updated (insufficient stock)
+                    logger.error(f"Insufficient stock for product {item.product_id} during order {order_id} processing.")
+                    # Consider adding order status update or notification here
+        
         db.commit()
+        logger.info(f"Successfully updated stock for order {order_id}")
     except Exception as e:
         logger.error(f"Error committing stock updates for order {order_id}: {e}")
         db.rollback()
 
 @router.post("/", response_model=OrderSchema)
-def create_order(
+async def create_order(
     *,
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks,
@@ -208,6 +208,32 @@ def create_order(
     
     # If order was immediately marked PAID, the background task is already added.
     # If using Stripe webhooks, the background task should be triggered there.
+
+    # After creating the order, add email notification task
+    if order:
+        # Prepare order data
+        order_data = {
+            "id": order.id,
+            "created_at": order.created_at.isoformat(),
+            "total_amount": order.total_amount,
+            "status": order.status,
+            "shipping_address": order.shipping_address,
+            "items": [
+                {
+                    "product_name": item.product_name,
+                    "quantity": item.quantity,
+                    "unit_price": item.unit_price
+                }
+                for item in order.items
+            ]
+        }
+        
+        # Send order confirmation email as background task
+        background_tasks.add_task(
+            email_service.send_order_confirmation,
+            current_user.email,
+            order_data
+        )
     
     return order
 
@@ -281,21 +307,15 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     
     return {"status": "success"}
 
-# Create a separate function for background processing that creates its own DB session
+# Fix process_paid_order to avoid circular import issues
 def process_paid_order(order_id: int):
     """Process a paid order in a background task with a fresh DB session"""
-    from app.core.database import SessionLocal
-    
     db = SessionLocal()
     try:
         # Process the order with a new session
         order = db.query(Order).filter(Order.id == order_id).first()
-        if order and order.status == OrderStatus.PENDING:
-            order.status = OrderStatus.PAID
-            db.add(order)
-            db.commit()
-            
-            # Now process the stock updates
+        if order and order.status == OrderStatus.PAID:
+            # Process the stock updates
             process_order_after_payment(db, order_id)
             logger.info(f"Order {order_id} processed successfully in background task")
     except Exception as e:

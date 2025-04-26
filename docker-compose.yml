@@ -12,6 +12,15 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/ecommerce}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-for-local-testing-only}
+      - STRIPE_API_KEY=${STRIPE_API_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    
     # In production, use Docker secrets instead of environment variables for sensitive data
     # environment:
     #   - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/ecommerce # Example using secret
@@ -21,19 +30,13 @@ services:
     #   - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
     # secrets:
     #   - db_password
-    environment: # Keep for development ease, but be aware of production risks
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ecommerce
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=your-dev-secret-key # Use a non-production key for dev
-      - STRIPE_API_KEY= # Leave blank or use test key for dev
-      - STRIPE_WEBHOOK_SECRET= # Leave blank or use test secret for dev
-      - ACCESS_TOKEN_EXPIRE_MINUTES=60 # Example
     depends_on:
       db:
         condition: service_healthy # Wait for db healthcheck
       redis:
-        condition: service_started # Redis doesn't have a built-in healthcheck command easily usable here
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+        condition: service_healthy # Wait for redis healthcheck
+    # Removed --reload for production builds. Add back if needed for dev hot-reload.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     user: appuser
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

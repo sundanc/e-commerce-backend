@@ -1,18 +1,23 @@
+# Core application dependencies
 # It is recommended to regularly scan dependencies for known vulnerabilities
 # using tools like `pip-audit` or `safety`.
 fastapi>=0.95.0
 uvicorn>=0.22.0
-pydantic>=1.10.7,<2.0.0  # Pin to v1 for compatibility
+pydantic>=2.0.0  # Updated to Pydantic v2
+pydantic-settings>=2.0.0  # Added for BaseSettings in Pydantic v2
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.6
 alembic>=1.10.4
 python-jose>=3.3.0
-passlib>=1.7.4,<1.7.5  # Pin to a version that works better with bcrypt
+passlib>=1.7.4
 python-multipart>=0.0.6
 stripe>=5.4.0
 redis>=4.5.5
 websockets>=11.0.3
 python-dotenv>=1.0.0
-bcrypt==4.0.1  # Pin to a specific version for better compatibility
+bcrypt==4.0.1  # Keep pinned for compatibility
 email-validator>=2.0.0  # Required for EmailStr validation
 slowapi>=0.1.8 # For rate limiting
+
+# Note: Testing and security scanning tools like pytest, safety, pip-audit
+# should ideally be in a separate requirements-dev.txt file.

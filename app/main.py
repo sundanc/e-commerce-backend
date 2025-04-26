@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, status, Depends
+from fastapi import FastAPI, Request, status, Depends, HTTPException  # Add HTTPException here
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +10,8 @@ import uuid
 
 from app.api.routes import api_router
 from app.core.config import settings
+from app.core.limiter import limiter, _rate_limit_exceeded_handler  # Add this import
+from slowapi.errors import RateLimitExceeded  # Add this import
 
 # Configure structured logging
 logging.basicConfig(
@@ -121,6 +123,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# Add the limiter state and handler immediately after app creation
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Add middlewares
 if settings.ENVIRONMENT == "production":
     app.add_middleware(HTTPSRedirectMiddleware)
@@ -131,8 +137,16 @@ app.add_middleware(RequestLoggerMiddleware)
 cors_origins = []
 if settings.CORS_ORIGINS:
     cors_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+elif settings.ENVIRONMENT != "production":
+    # Allow all origins only in non-production environments if CORS_ORIGINS is not set
+    logger.warning("CORS_ORIGINS not set, allowing all origins for development.")
+    cors_origins = ["*"]
 else:
-    cors_origins = ["*"]  # Fallback for development
+    # In production, require CORS_ORIGINS to be explicitly set
+    logger.error("CORS_ORIGINS must be set in production environment!")
+    # Optionally raise an error or default to a very restrictive setting:
+    # raise ValueError("CORS_ORIGINS must be set in production environment!")
+    cors_origins = [] # Default to no origins allowed if not set in production
 
 app.add_middleware(
     CORSMiddleware,

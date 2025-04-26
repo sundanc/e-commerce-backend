@@ -24,7 +24,7 @@ def generate_jti() -> str:
     return secrets.token_urlsafe(16)
 
 @router.post("/login", response_model=Token)
-@limiter.limit("5/minute") # Stricter rate limit (5 attempts per minute per IP)
+@limiter.limit(settings.RATE_LIMIT_LOGIN)  # Use settings-based rate limit
 async def login_access_token(
     request: Request,
     db: Session = Depends(get_db),
@@ -102,7 +102,7 @@ async def login_access_token(
     }
 
 @router.post("/register", response_model=UserSchema)
-@limiter.limit("10/hour") # Strict rate limit for registration
+@limiter.limit(settings.RATE_LIMIT_LOGIN)  # Use settings-based rate limit
 async def register_user(
     request: Request,
     *,

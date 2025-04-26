@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 import time
 import logging
+from datetime import datetime
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -21,21 +22,21 @@ logger = logging.getLogger(__name__)
 #     """Check if a token has been blacklisted"""
 #     return redis_client.exists(f"blacklist:{jti}")
 
-def decode_token(token: str) -> Tuple[TokenPayload, str]:
+def decode_token(token: str) -> TokenPayload:
     """
     Decode and validate JWT token
-    
-    Returns a tuple of (token_data, raw_token)
+
+    Returns the validated token payload
     """
     try:
         # Explicitly specify algorithms to prevent algorithm confusion attacks
         payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
+            token,
+            settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM]
         )
         token_data = TokenPayload(**payload)
-        
+
         # Check if token is the right type (access vs refresh)
         if payload.get('type') != 'access':
             raise HTTPException(
@@ -43,9 +44,9 @@ def decode_token(token: str) -> Tuple[TokenPayload, str]:
                 detail="Invalid token type",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        return token_data, payload
-        
+
+        return token_data
+
     except JWTError as e:
         logger.warning(f"JWT decode error: {str(e)}")
         raise HTTPException(
@@ -60,73 +61,66 @@ def decode_token(token: str) -> Tuple[TokenPayload, str]:
             detail="Invalid token format",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        
+
 
 def get_current_user(
-    db: Session = Depends(get_db), 
-    token: str = Depends(oauth2_scheme),
-    request: Request = None
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
 ) -> User:
     """
     Get the current authenticated user.
-    
+
     Validates JWT token and returns the corresponding user.
     """
-    token_data, raw_payload = decode_token(token)
-    
-    # Check token expiration explicitly
-    if token_data.exp < time.time():
-        client_info = f" from IP: {request.client.host}" if request else ""
-        logger.warning(f"Expired token used (sub: {token_data.sub}){client_info}")
+    token_data = decode_token(token)
+
+    # Check token expiration explicitly (using utcnow() is safer than time.time())
+    if token_data.exp < datetime.utcnow().timestamp():
+        logger.warning(f"Expired token used (sub: {token_data.sub})")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # If using token blacklisting, check if token is blacklisted
-    # jti = raw_payload.get("jti")
+    # jti = raw_payload.get("jti") # Would need raw_payload back if enabling this
     # if jti and is_token_blacklisted(jti):
-    #     client_info = f" from IP: {request.client.host}" if request else ""
-    #     logger.warning(f"Blacklisted token used (sub: {token_data.sub}){client_info}")
+    #     logger.warning(f"Blacklisted token used (sub: {token_data.sub})")
     #     raise HTTPException(
     #         status_code=status.HTTP_401_UNAUTHORIZED,
     #         detail="Token has been revoked",
     #         headers={"WWW-Authenticate": "Bearer"},
     #     )
-    
+
     # Get user from database
     user = db.query(User).filter(User.id == token_data.sub).first()
     if not user:
-        client_info = f" from IP: {request.client.host}" if request else ""
-        logger.warning(f"Auth attempt with valid token but non-existent user ID: {token_data.sub}{client_info}")
+        logger.warning(f"Auth attempt with valid token but non-existent user ID: {token_data.sub}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     # Check if user is active
     if not user.is_active:
-        client_info = f" from IP: {request.client.host}" if request else ""
-        logger.warning(f"Auth attempt by inactive user: {user.email} (ID: {user.id}){client_info}")
+        logger.warning(f"Auth attempt by inactive user: {user.email} (ID: {user.id})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user"
         )
-        
+
     return user
 
 
 def get_current_active_admin(
-    current_user: User = Depends(get_current_user), 
-    request: Request = None
+    current_user: User = Depends(get_current_user)
 ) -> User:
     """
     Get current user and verify they are an admin.
     """
     if not current_user.is_admin:
-        client_info = f" from IP: {request.client.host}" if request else ""
-        logger.warning(f"Admin access attempt by non-admin user: {current_user.email} (ID: {current_user.id}){client_info}")
+        logger.warning(f"Admin access attempt by non-admin user: {current_user.email} (ID: {current_user.id})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
