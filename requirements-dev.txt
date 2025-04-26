@@ -1,0 +1,13 @@
+# Development and Testing Dependencies
+pytest>=7.0.0
+pytest-cov # For test coverage reports
+httpx # For async testing with TestClient
+
+# Security Scanning Tools
+safety
+pip-audit
+
+# Linting/Formatting (Optional but recommended)
+# black
+# flake8
+# mypy

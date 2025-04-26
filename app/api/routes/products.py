@@ -2,12 +2,14 @@ from typing import Any, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_, func, desc
 
 from app.api.deps import get_current_active_admin, get_db, limit_query_factory
 from app.core.database import get_db
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.product import Product as ProductSchema, ProductCreate, ProductUpdate
+from app.core.cache import cache_response, invalidate_cache
 
 router = APIRouter()
 
@@ -15,7 +17,8 @@ router = APIRouter()
 limit_product_query = limit_query_factory(max_limit=100, default_limit=20)
 
 @router.get("/", response_model=List[ProductSchema])
-def get_products(
+@cache_response(prefix="products", expire_seconds=300)  # Cache for 5 minutes
+async def get_products(
     db: Session = Depends(get_db),
     pagination: Tuple[int, int] = Depends(limit_product_query),
     category: Optional[str] = None,
@@ -40,7 +43,12 @@ def get_products(
     
     if search:
         # Use more efficient ILIKE with index if available
-        query = query.filter(Product.name.ilike(f"%{search}%"))
+        query = query.filter(
+            or_(
+                Product.name.ilike(f"%{search}%"),
+                Product.description.ilike(f"%{search}%")
+            )
+        )
     
     # Apply limits for security and performance
     products = query.offset(skip).limit(limit).all()
@@ -61,7 +69,7 @@ def get_product(
     return product
 
 @router.post("/", response_model=ProductSchema)
-def create_product(
+async def create_product(
     *,
     db: Session = Depends(get_db),
     product_in: ProductCreate,
@@ -81,10 +89,14 @@ def create_product(
     db.add(product)
     db.commit()
     db.refresh(product)
+    
+    # Invalidate product cache
+    await invalidate_cache("products:*")
+    
     return product
 
 @router.put("/{product_id}", response_model=ProductSchema)
-def update_product(
+async def update_product(
     *,
     db: Session = Depends(get_db),
     product_id: int,
@@ -105,10 +117,14 @@ def update_product(
     db.add(product)
     db.commit()
     db.refresh(product)
+    
+    # Invalidate product cache
+    await invalidate_cache("products:*")
+    
     return product
 
 @router.delete("/{product_id}", response_model=ProductSchema)
-def delete_product(
+async def delete_product(
     *,
     db: Session = Depends(get_db),
     product_id: int,
@@ -126,4 +142,8 @@ def delete_product(
     db.add(product)
     db.commit()
     db.refresh(product)
+    
+    # Invalidate product cache
+    await invalidate_cache("products:*")
+    
     return product

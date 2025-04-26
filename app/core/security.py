@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Union
+import uuid # Import uuid for JTI
 
 from jose import jwt
 from passlib.context import CryptContext
@@ -15,7 +16,7 @@ pwd_context = CryptContext(
 
 
 def create_access_token(
-    subject: Union[str, Any], 
+    subject: Union[str, Any],
     expires_delta: Optional[timedelta] = None,
     additional_claims: Optional[Dict[str, Any]] = None
 ) -> str:
@@ -39,21 +40,24 @@ def create_access_token(
     
     # Base claims with expiration and subject
     to_encode = {"exp": expire, "sub": str(subject)}
-    
+
     # Add issued at time for better security
     to_encode.update({"iat": datetime.utcnow()})
-    
+
+    # Add unique token identifier (JTI) for potential revocation
+    to_encode.update({"jti": str(uuid.uuid4())})
+
     # Add token type to prevent token confusion attacks
     to_encode.update({"type": "access"})
-    
+
     # Add any additional claims provided
     if additional_claims:
         to_encode.update(additional_claims)
-        
+
     # Use settings for algorithm and key
     encoded_jwt = jwt.encode(
-        to_encode, 
-        settings.SECRET_KEY, 
+        to_encode,
+        settings.SECRET_KEY,
         algorithm=settings.ALGORITHM
     )
     return encoded_jwt

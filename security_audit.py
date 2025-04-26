@@ -10,6 +10,14 @@ This script performs deeper security checks:
 5. Insecure redirects
 6. Unsafe deserialization
 7. Missing access controls
+
+NOTE: This script relies on external tools like 'safety' or 'pip-audit'
+      for dependency scanning. Ensure these are installed in your environment
+      (e.g., pip install safety pip-audit).
+
+NOTE: Some checks (like CSRF, Access Control) are heuristic and based on common
+      patterns. They might produce false positives or negatives depending on
+      the specific implementation details. Manual review is recommended.
 """
 import os
 import re
@@ -115,7 +123,9 @@ def check_jwt_config() -> List[Dict[str, Any]]:
     return issues
 
 def check_sql_injection() -> List[Dict[str, Any]]:
-    """Check for potential SQL injection vulnerabilities"""
+    """Check for potential SQL injection vulnerabilities (focuses on raw SQL)"""
+    # Note: This check primarily looks for raw SQL execution patterns that might
+    #       use string formatting. It generally assumes SQLAlchemy ORM usage is safe.
     issues = []
     
     for root, _, files in os.walk("app"):
@@ -153,7 +163,11 @@ def check_sql_injection() -> List[Dict[str, Any]]:
     return issues
 
 def check_csrf_protection() -> List[Dict[str, Any]]:
-    """Check for CSRF vulnerabilities"""
+    """Check for CSRF vulnerabilities (heuristic check)"""
+    # Note: FastAPI APIs using JWT in headers are generally not vulnerable to
+    #       traditional CSRF if cookies are not used for authentication.
+    #       This check looks for basic indicators but might not be relevant
+    #       if only token-based auth is used.
     issues = []
     has_csrf_protection = False
     
@@ -270,7 +284,10 @@ def check_insecure_redirects() -> List[Dict[str, Any]]:
     return issues
 
 def check_access_controls() -> List[Dict[str, Any]]:
-    """Check for missing or weak access controls"""
+    """Check for missing or weak access controls (heuristic check)"""
+    # Note: This check looks for common patterns like `Depends(get_current_user)`
+    #       in POST/PUT/DELETE/PATCH endpoints. It might miss custom auth schemes
+    #       or incorrectly flag public modification endpoints.
     issues = []
     
     # Find all API route files

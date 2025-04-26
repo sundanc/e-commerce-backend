@@ -1,8 +1,10 @@
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from fastapi.responses import JSONResponse
 import redis.asyncio as redis
+import logging
 
 from app.core.config import settings
 
@@ -14,6 +16,14 @@ else:
     # Fallback to in-memory limiter (not suitable for multi-process/multi-instance deployments)
     limiter = Limiter(key_func=get_remote_address)
 
-# You can add custom states or configurations to the limiter if needed
-# e.g., app.state.limiter = limiter
-# app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Handler for rate limit exceeded errors
+async def _rate_limit_exceeded_handler(request, exc):
+    """Handler for rate limit exceeded errors"""
+    logging.warning(f"Rate limit exceeded: {request.client.host} - {request.url.path}")
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. Please try again later.",
+            "limit": str(exc.detail) if hasattr(exc, "detail") else "Rate limit exceeded"
+        }
+    )

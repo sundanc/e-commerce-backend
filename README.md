@@ -1,32 +1,33 @@
 # 🛒 E-Commerce Backend API
 
 ![E-commerce Platform](https://img.shields.io/badge/Platform-E--Commerce-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-brightgreen)
+![Version](https://img.shields.io/badge/version-0.2.0-brightgreen) <!-- Updated version -->
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.11+-yellow)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Modern%20%26%20Fast-009688)
 
-A robust, scalable, and secure RESTful API for e-commerce applications. Built with FastAPI, SQLAlchemy, PostgreSQL, and Docker.
+A robust, scalable, and secure RESTful API for e-commerce applications. Built with FastAPI, SQLAlchemy 2.0, PostgreSQL, Redis, and Docker.
 
 [![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=sundanc&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/sundanc)
 
 ## ✨ Features
 
-- **🔐 Secure Authentication**: JWT-based authentication with token protection and role-based authorization
-- **👥 User Management**: Account creation, profiles, and permission controls
-- **📦 Product Catalog**: Comprehensive product management with searching and filtering
-- **🛒 Shopping Cart**: Flexible cart functionality with real-time stock validation
-- **💳 Order Processing**: End-to-end order lifecycle management
-- **💰 Payment Integration**: Seamless Stripe payment processing with webhook security
-- **🚚 Shipping Management**: Order tracking and status updates
-- **👑 Admin Dashboard API**: Complete administrative controls with proper permission checks
-- **⚡ Performance Optimized**: Redis caching and query optimization for high throughput
-- **🐳 Containerized**: Docker & Docker Compose with security best practices
-- **🔒 Security Focused**: Comprehensive security controls with automated vulnerability scanning
+- **🔐 Secure Authentication**: JWT-based authentication with JTI for potential revocation, token type validation, and role-based authorization.
+- **👥 User Management**: Account creation, profiles, and permission controls.
+- **📦 Product Catalog**: Comprehensive product management with searching and filtering.
+- **🛒 Shopping Cart**: Flexible cart functionality with real-time stock validation.
+- **💳 Order Processing**: End-to-end order lifecycle management with background processing and atomic stock updates.
+- **💰 Payment Integration**: Seamless Stripe payment processing with webhook security.
+- **🚚 Shipping Management**: Order tracking and status updates.
+- **👑 Admin Dashboard API**: Complete administrative controls with proper permission checks.
+- **⚡ Performance Optimized**: Redis caching for API responses and query optimization.
+- **🛡️ API Protection**: Rate limiting implemented using SlowAPI and Redis.
+- **🐳 Containerized**: Secure multi-stage Docker build & Docker Compose setup with non-root user and healthchecks.
+- **🔒 Security Focused**: Comprehensive security controls, updated dependencies, and automated vulnerability scanning scripts.
 
 ## 🏗️ Architecture
 
-My e-commerce backend follows a clean, layered architecture:
+Our e-commerce backend follows a clean, layered architecture:
 
 ```
 ┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐
@@ -45,10 +46,10 @@ My e-commerce backend follows a clean, layered architecture:
 ## 🔧 Technology Stack
 
 - **FastAPI**: High-performance API framework with automatic OpenAPI documentation
-- **SQLAlchemy**: Powerful ORM for database operations with transaction safety
+- **SQLAlchemy 2.0**: Powerful ORM for database operations with transaction safety
 - **PostgreSQL**: Robust relational database for production
 - **SQLite**: Lightweight database for development and testing
-- **Pydantic**: Data validation and settings management (compatible with v1 and v2) 
+- **Pydantic v2**: Data validation and settings management 
 - **JWT**: Secure, stateless authentication with replay protection
 - **Stripe API**: Enterprise-grade payment processing with webhook security
 - **Redis**: High-performance caching, session management, and rate limiting
@@ -105,9 +106,15 @@ My e-commerce backend follows a clean, layered architecture:
 
 ### Docker Deployment
 
-```bash
-docker-compose up -d
-```
+**Important:** Before building the Docker image, you **must** update the `sha256:<PASTE_DIGEST_HERE>` placeholders in the `Dockerfile` with the latest digest for the `python:3.11-slim` image. You can find this digest on [Docker Hub](https://hub.docker.com/_/python/tags?page=1&name=3.11-slim) or by running `docker pull python:3.11-slim` and then `docker inspect python:3.11-slim | grep Digest` locally.
+
+1.  **Configure Environment:** Ensure your `.env` file is correctly configured for the Docker environment (e.g., `DATABASE_URL=postgresql://postgres:postgres@db:5432/ecommerce`, `REDIS_URL=redis://redis:6379/0`).
+
+2.  **Build and Run:**
+    ```bash
+    docker-compose up -d --build
+    ```
+    The API will be available at `http://localhost:8000`.
 
 ## 📚 API Documentation
 
